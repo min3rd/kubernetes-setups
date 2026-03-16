@@ -152,6 +152,9 @@ mkdir -p $HOME/.kube
 sudo cp /etc/kubernetes/admin.conf $HOME/.kube/config
 sudo chown $(id -u):$(id -g) $HOME/.kube/config
 
+echo "Remove control-plane taint (single-node: allow pods on master)..."
+kubectl taint nodes --all node-role.kubernetes.io/control-plane- 2>/dev/null || true
+
 echo
 echo
 echo
