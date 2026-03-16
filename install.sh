@@ -10,12 +10,6 @@ echo "================================="
 read -p "Node role (master/worker): " ROLE
 read -p "Kubernetes data directory (example /data/k8s): " DATA_DIR
 read -p "Master API Server IP: " MASTER_IP
-if [ "$ROLE" = "master" ]; then
-  read -p "ArgoCD hostname (leave blank to use IP): " ARGOCD_HOST
-  ARGOCD_HOST=${ARGOCD_HOST:-$MASTER_IP}
-  read -p "Nginx hostname/domain (leave blank to use IP): " NGINX_HOST
-  NGINX_HOST=${NGINX_HOST:-$MASTER_IP}
-fi
 
 mkdir -p "$DATA_DIR"
 
@@ -210,93 +204,22 @@ kubectl apply -n argocd -f \
   https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml \
   --server-side
 
-echo "Disable ArgoCD TLS for Ingress access..."
+echo "Disable ArgoCD TLS (HTTP mode)..."
 kubectl patch deployment argocd-server -n argocd \
   --type='json' -p='[{"op":"add","path":"/spec/template/spec/containers/0/args/-","value":"--insecure"}]' || true
 
-echo "Patch ArgoCD service to ClusterIP (served via Ingress)..."
+echo "Expose ArgoCD via NodePort 30080..."
 kubectl patch svc argocd-server -n argocd \
-  -p '{"spec":{"type":"ClusterIP"}}' || true
+  -p '{"spec":{"type":"NodePort","ports":[{"port":80,"targetPort":8080,"nodePort":30080,"protocol":"TCP","name":"http"}]}}' || true
 
 echo "Wait for ArgoCD pods to be ready..."
 kubectl wait --for=condition=Available deployment/argocd-server \
   -n argocd --timeout=300s || true
 
-echo "Create ArgoCD Ingress..."
-cat <<INGEOF | kubectl apply -f -
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: argocd-ingress
-  namespace: argocd
-  annotations:
-    nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
-    nginx.ingress.kubernetes.io/ssl-redirect: "false"
-spec:
-  ingressClassName: nginx
-  rules:
-  - host: "$ARGOCD_HOST"
-    http:
-      paths:
-      - path: /
-        pathType: Prefix
-        backend:
-          service:
-            name: argocd-server
-            port:
-              number: 80
-INGEOF
-
 ARGOCD_PASSWORD=$(kubectl -n argocd wait --for=jsonpath='{.data.password}' \
   secret/argocd-initial-admin-secret --timeout=300s 2>/dev/null; \
   kubectl -n argocd get secret argocd-initial-admin-secret \
   -o jsonpath="{.data.password}" | base64 -d)
-
-echo
-echo
-echo
-echo
-echo
-echo "================================="
-echo "Deploy Nginx via ArgoCD"
-echo "================================="
-
-echo "Create nginx app namespace..."
-kubectl create namespace nginx-app 2>/dev/null || true
-
-echo "Create ArgoCD Application for Nginx..."
-cat <<APPEOF | kubectl apply -f -
-apiVersion: argoproj.io/v1alpha1
-kind: Application
-metadata:
-  name: nginx-app
-  namespace: argocd
-spec:
-  project: default
-  source:
-    repoURL: https://charts.bitnami.com/bitnami
-    chart: nginx
-    targetRevision: "*"
-    helm:
-      values: |
-        service:
-          type: ClusterIP
-        ingress:
-          enabled: true
-          ingressClassName: nginx
-          hostname: "$NGINX_HOST"
-          annotations:
-            nginx.ingress.kubernetes.io/ssl-redirect: "false"
-  destination:
-    server: https://kubernetes.default.svc
-    namespace: nginx-app
-  syncPolicy:
-    automated:
-      prune: true
-      selfHeal: true
-    syncOptions:
-    - CreateNamespace=true
-APPEOF
 
 echo
 echo "Saving join command to /root/k8s-join-command.sh..."
@@ -308,11 +231,12 @@ echo "=========================================================="
 echo "  INSTALLATION COMPLETE"
 echo "=========================================================="
 echo
-echo "  ArgoCD URL : http://$ARGOCD_HOST"
-echo "  ArgoCD User: admin"
-echo "  ArgoCD Pass: $ARGOCD_PASSWORD"
+echo "  ArgoCD NodePort : http://$MASTER_IP:30080"
+echo "  ArgoCD User     : admin"
+echo "  ArgoCD Pass     : $ARGOCD_PASSWORD"
 echo
-echo "  Nginx URL  : http://$NGINX_HOST"
+echo "  Configure your external nginx to proxy_pass to:"
+echo "    http://$MASTER_IP:30080"
 echo
 echo "  Worker join command saved to: /root/k8s-join-command.sh"
 echo "=========================================================="
