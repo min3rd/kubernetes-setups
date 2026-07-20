@@ -95,10 +95,20 @@ install_base() {
 
 install_containerd() {
   log "Cài đặt containerd"
-  dnf install -y containerd
+  # Trên Rocky/Alma/RHEL 9 gói 'containerd' thường không có sẵn trong repo mặc định,
+  # nên ta thử cài 'containerd' trước, nếu không có thì dùng 'containerd.io' từ Docker CE repo.
+  if dnf -y install containerd 2>/dev/null; then
+    echo "Đã cài containerd từ repo hệ điều hành."
+  else
+    warn "Không tìm thấy gói 'containerd' trong repo mặc định, dùng Docker CE repo (containerd.io)."
+    dnf install -y yum-utils
+    dnf config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+    dnf install -y containerd.io
+  fi
   mkdir -p /etc/containerd
   containerd config default > /etc/containerd/config.toml
   sed -i 's/SystemdCgroup = false/SystemdCgroup = true/' /etc/containerd/config.toml
+  # pause image tương thích K8s v1.29
   sed -i 's#sandbox_image = ".*"#sandbox_image = "registry.k8s.io/pause:3.9"#' /etc/containerd/config.toml
   systemctl enable --now containerd
 }
