@@ -1,0 +1,5 @@
+# Bỏ qua file cấu hình thực tế chứa IP/thông tin môi trường
+.env
+
+# File lệnh join worker sinh ra trên master (chứa token bí mật)
+k8s-join-command.sh
