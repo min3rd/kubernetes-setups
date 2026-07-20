@@ -91,6 +91,10 @@ setup_hostname() {
 install_base() {
   log "Cài đặt gói cơ bản"
   dnf install -y yum-utils device-mapper-persistent-data lvm2 git curl wget
+  # nfs-utils cung cấp /sbin/mount.nfs - BẮT BUỘC để mount NFS PersistentVolume.
+  # Thiếu gói này pod dùng NFS PV sẽ lỗi: "need a /sbin/mount.<type> helper program".
+  dnf install -y nfs-utils
+  systemctl enable --now rpc-statd 2>/dev/null || true
 }
 
 install_containerd() {
