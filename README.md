@@ -98,26 +98,64 @@ sudo MASTER_IP=10.0.0.10 TOKEN=xxxx HASH=sha256:yyyy bash install-worker.sh
 
 Kiểm tra trên master: `kubectl get nodes`.
 
-## Ví dụ Ansible (không kèm file playbook)
+## Mô hình nhiều master (HA)
+
+Để có cụm chịu lỗi, cần **tối thiểu 3 master** và một **VIP / Load Balancer** trỏ tới
+port 6443 của các master (vd. keepalived + haproxy, hoặc LB phần cứng/cloud).
+
+Biến then chốt: `CONTROL_PLANE_ENDPOINT=VIP:6443` — khi đặt, kubeadm sẽ tạo cụm HA
+(và worker/master bổ sung kết nối qua VIP này thay vì IP từng node).
+
+### Thứ tự cài đặt
+
+```bash
+# 1) Master đầu (FIRST_MASTER=true mặc định)
+sudo MASTER_IP=10.0.0.10 CONTROL_PLANE_ENDPOINT=10.0.0.100:6443 bash install-master.sh
+#   -> sinh 2 file trên master đầu:
+#      /root/k8s-join-command.sh        (cho worker)
+#      /root/k8s-controlplane-join.sh   (cho master bổ sung)
+
+# 2) Master bổ sung (2 và 3...) - FIRST_MASTER=false
+sudo MASTER_IP=10.0.0.11 FIRST_MASTER=false \
+     JOIN_CMD="$(ssh master1 'cat /root/k8s-controlplane-join.sh')" bash install-master.sh
+
+# 3) Worker (như cũ)
+sudo JOIN_CMD="$(ssh master1 'cat /root/k8s-join-command.sh')" bash install-worker.sh
+```
+
+> Lưu ý: lệnh join master bổ sung chứa `--certificate-key` (dùng để chia sẻ cert).
+> Nó có hiệu lực trong **2h** kể từ lúc master đầu sinh ra. Quá hạn, trên master đầu chạy:
+> `kubeadm certs certificate-key` để lấy key mới và build lại lệnh join.
+
+### Port bổ sung cần mở (đã xử lý trong `configure_firewall master`)
+- `2379-2380/tcp` (etcd) — master giao tiếp etcd peer.
+- `6443/tcp` (API server) — worker & master khác vào qua VIP.
+- `10250/tcp` (kubelet).
+
+### Ví dụ Ansible (3 master + N worker, có VIP)
 
 ```yaml
 # inventory
-master ansible_host=10.0.0.10
-worker ansible_host=10.0.0.11
+[masters]
+master1 ansible_host=10.0.0.10
+master2 ansible_host=10.0.0.11
+master3 ansible_host=10.0.0.12
 
-# chạy
-- hosts: master
+[workers]
+worker1 ansible_host=10.0.0.21
+worker2 ansible_host=10.0.0.22
+
+# site.yml (rút gọn)
+- hosts: master1
   become: true
-  tasks:
-    - shell: "MASTER_IP={{ ansible_host }} bash /opt/k8s/install-master.sh"
-- hosts: worker
+  shell: "MASTER_IP={{ ansible_host }} CONTROL_PLANE_ENDPOINT=10.0.0.100:6443 bash /opt/k8s/install-master.sh"
+- hosts: master2, master3
   become: true
-  tasks:
-    - shell: "JOIN_CMD='{{ hostvars['master']['join_cmd'] }}' bash /opt/k8s/install-worker.sh"
+  shell: "MASTER_IP={{ ansible_host }} FIRST_MASTER=false JOIN_CMD='{{ hostvars['master1']['cp_join_cmd'] }}' bash /opt/k8s/install-master.sh"
+- hosts: workers
+  become: true
+  shell: "JOIN_CMD='{{ hostvars['master1']['worker_join_cmd'] }}' bash /opt/k8s/install-worker.sh"
 ```
-
-(Token có hạn dùng 2h; nếu hết hạn, chạy `kubeadm token create --print-join-command`
-trên master để lấy mới.)
 
 ## NodePort range
 
