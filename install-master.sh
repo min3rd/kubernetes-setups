@@ -151,14 +151,17 @@ EOF
   chmod 600 /root/k8s-join-command.sh
 
   log "Tạo lệnh join cho control-plane (master bổ sung)"
-  CERT_KEY=$(kubeadm certs certificate-key)
-  # Lấy lại token + hash hiện hành để build lệnh control-plane
-  JOIN_LINE=$(kubeadm token create --print-join-command)
-  TOKEN_VAL=$(echo "$JOIN_LINE" | awk '{for(i=1;i<=NF;i++) if($i=="--token"){print $(i+1)}}')
-  HASH_VAL=$(echo "$JOIN_LINE" | grep -o 'sha256:[a-f0-9]*')
-  CP_ENDPOINT="${CONTROL_PLANE_ENDPOINT:-${MASTER_IP}:6443}"
-  echo "kubeadm join ${CP_ENDPOINT} --token ${TOKEN_VAL} --discovery-token-ca-cert-hash ${HASH_VAL} --control-plane --certificate-key ${CERT_KEY}" \
-    > /root/k8s-controlplane-join.sh
+  if [[ -n "${JOIN_CMD_CONTROL_PLANE:-}" ]]; then
+    echo "${JOIN_CMD_CONTROL_PLANE}" > /root/k8s-controlplane-join.sh
+  else
+    CERT_KEY=$(kubeadm certs certificate-key)
+    JOIN_LINE=$(kubeadm token create --print-join-command)
+    TOKEN_VAL=$(echo "$JOIN_LINE" | awk '{for(i=1;i<=NF;i++) if($i=="--token"){print $(i+1)}}')
+    HASH_VAL=$(echo "$JOIN_LINE" | grep -o 'sha256:[a-f0-9]*')
+    CP_ENDPOINT="${CONTROL_PLANE_ENDPOINT:-${MASTER_IP}:6443}"
+    echo "kubeadm join ${CP_ENDPOINT} --token ${TOKEN_VAL} --discovery-token-ca-cert-hash ${HASH_VAL} --control-plane --certificate-key ${CERT_KEY}" \
+      > /root/k8s-controlplane-join.sh
+  fi
   chmod 600 /root/k8s-controlplane-join.sh
 
   echo -e "\n\033[1;32m=========================================================="
@@ -180,8 +183,10 @@ EOF
 # MASTER BỔ SUNG -> kubeadm join --control-plane
 # ============================================================
 else
-  if [[ -n "$JOIN_CMD" ]]; then
-    : # dùng nguyên lệnh
+  if [[ -n "${JOIN_CMD_CONTROL_PLANE:-}" ]]; then
+    JOIN_CMD="${JOIN_CMD_CONTROL_PLANE}"
+  elif [[ -n "$JOIN_CMD" ]]; then
+    : # tương thích ngược
   elif [[ -n "$MASTER_IP" && -n "$TOKEN" && -n "$HASH" && -n "$CERT_KEY" ]]; then
     CP_ENDPOINT="${CONTROL_PLANE_ENDPOINT:-${MASTER_IP}:6443}"
     JOIN_CMD="kubeadm join ${CP_ENDPOINT} --token ${TOKEN} --discovery-token-ca-cert-hash ${HASH} --control-plane --certificate-key ${CERT_KEY}"

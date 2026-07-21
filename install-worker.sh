@@ -27,12 +27,15 @@ DATA_DIR="${DATA_DIR:-/data/k8s}"
 NODE_HOSTNAME="${NODE_HOSTNAME:-$(hostname)}"
 
 if [[ -n "$JOIN_CMD" ]]; then
-  : # dùng nguyên lệnh
+  echo "[debug] Dùng JOIN_CMD có sẵn."
 elif [[ -n "$MASTER_IP" && -n "$TOKEN" && -n "$HASH" ]]; then
   JOIN_CMD="kubeadm join ${MASTER_IP}:6443 --token ${TOKEN} --discovery-token-ca-cert-hash ${HASH}"
+  echo "[debug] Build JOIN_CMD từ MASTER_IP/TOKEN/HASH."
 else
-  fail "Cần cung cấp JOIN_CMD hoặc (MASTER_IP + TOKEN + HASH)."
+  fail "Cần cung cấp JOIN_CMD HOẶC (MASTER_IP + TOKEN + HASH) trong .env."
 fi
+[[ -n "$JOIN_CMD" ]] || fail "JOIN_CMD rỗng."
+echo "[debug] JOIN_CMD chứa: $JOIN_CMD"
 [[ "$JOIN_CMD" == kubeadm\ join* ]] || fail "Lệnh join phải bắt đầu bằng 'kubeadm join ...'."
 
 mkdir -p "$DATA_DIR"

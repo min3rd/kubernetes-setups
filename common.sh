@@ -24,8 +24,8 @@ load_env() {
     [[ -z "$line" || "$line" == \#* ]] && continue
     key="${line%%=*}"
     val="${line#*=}"
-    # chỉ set nếu biến chưa được định nghĩa
-    [[ -z "${!key+x}" ]] && export "$key=$val"
+    # "last wins": cho phép định nghĩa sau ghi đè trước
+    export "$key=$val"
   done < "$env_file"
 }
 

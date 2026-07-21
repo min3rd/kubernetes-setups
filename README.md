@@ -49,11 +49,14 @@ Biến có thể đặt trong `.env`:
 | `NODE_HOSTNAME`| cả hai   | ❌       | `$(hostname)` |
 | `POD_SUBNET`   | master   | ❌       | `10.244.0.0/16` |
 | `K8S_VERSION`  | master   | ❌       | `v1.29.0`     |
-| `JOIN_CMD`     | worker   | ✅*      | —             |
-| `TOKEN`        | worker   | ✅*      | —             |
-| `HASH`         | worker   | ✅*      | —             |
+| `JOIN_CMD_CONTROL_PLANE` | master bổ sung | ✅* | — |
+| `TOKEN`        | worker/master bổ sung | ✅*      | —             |
+| `HASH`         | worker/master bổ sung | ✅*      | —             |
+| `CERT_KEY`     | master bổ sung | ✅* | — |
+| `JOIN_CMD`     | worker | ✅* | — |
 
-\* Worker cần `JOIN_CMD` HOẶC (`MASTER_IP` + `TOKEN` + `HASH`).
+\\* Worker cần `JOIN_CMD` HOẶC (`MASTER_IP` + `TOKEN` + `HASH`).
+\\* Master bổ sung cần `JOIN_CMD_CONTROL_PLANE` HOẶC (`MASTER_IP` + `TOKEN` + `HASH` + `CERT_KEY`).
 
 ### Lấy token join cho worker
 
@@ -123,9 +126,9 @@ sudo MASTER_IP=10.0.0.11 FIRST_MASTER=false \
 sudo JOIN_CMD="$(ssh master1 'cat /root/k8s-join-command.sh')" bash install-worker.sh
 ```
 
-> Lưu ý: lệnh join master bổ sung chứa `--certificate-key` (dùng để chia sẻ cert).
-> Nó có hiệu lực trong **2h** kể từ lúc master đầu sinh ra. Quá hạn, trên master đầu chạy:
-> `kubeadm certs certificate-key` để lấy key mới và build lại lệnh join.
+# Lưu ý: lệnh join master bổ sung chứa `--certificate-key` (dùng để chia sẻ cert).
+# Bạn có thể tự cung cấp sẵn qua `.env`:
+#   JOIN_CMD_CONTROL_PLANE="kubeadm join VIP:6443 --token ... --discovery-token-ca-cert-hash sha256:... --control-plane --certificate-key ..."
 
 ### Port bổ sung cần mở (đã xử lý trong `configure_firewall master`)
 - `2379-2380/tcp` (etcd) — master giao tiếp etcd peer.
